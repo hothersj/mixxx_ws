@@ -40,6 +40,7 @@
 #include "widget/wlibrarysidebar.h"
 #include "widget/wsearchlineedit.h"
 #include "widget/wtracktableview.h"
+#include "mixer/basetrackplayer.h"
 
 namespace {
 
@@ -73,6 +74,7 @@ Library::Library(
           m_pMixxxLibraryFeature(nullptr),
           m_pPlaylistFeature(nullptr),
           m_pCrateFeature(nullptr),
+          m_pPlayerManager(pPlayerManager),
           m_pAnalysisFeature(nullptr) {
     qRegisterMetaType<LibraryRemovalType>("LibraryRemovalType");
 
@@ -540,6 +542,22 @@ void Library::slotShowTrackModel(QAbstractItemModel* model) {
     emit showTrackModel(model);
     emit switchToView(m_sTrackViewName);
     emit restoreSearch(trackModel->currentSearch());
+
+    // Is this the RekordboxFeature’s model?
+    if (auto* rbpm = qobject_cast<RekordboxPlaylistModel*>(model)) {
+        // Store it for later
+        m_pRekordboxPlaylistModel = rbpm;
+        connect(this, &Library::generatePhraseData, m_pRekordboxPlaylistModel, &RekordboxPlaylistModel::generatePhraseData);
+        connect(m_pRekordboxPlaylistModel, &RekordboxPlaylistModel::returnLoadedFileSegmentsNoHdl, this, &Library::returnLoadedFileSegmentsNoHdl);
+    }
+}
+
+RekordboxPlaylistModel* Library::getRekordboxPlaylistModel() {
+    return m_pRekordboxPlaylistModel;
+}
+
+void Library::returnLoadedFileSegmentsNoHdl(std::map<uint16_t, const char*> phrases) {
+    emit returnLoadedFileSegments(phrases, lastConHdl);
 }
 
 void Library::slotSwitchToView(const QString& view) {
@@ -561,6 +579,89 @@ void Library::slotLoadLocationToPlayer(const QString& location, const QString& g
         emit loadTrackToPlayer(pTrack, group, play);
 #endif
     }
+}
+
+//Convenience method for loading and analysing a track from directory.
+void Library::loadTrackByFileName(const QString& location, int deck, websocketpp::connection_hdl hdl, bool play) {
+    lastConHdl = hdl;
+
+    auto trackRef = TrackRef::fromFilePath(location);
+    TrackPointer pTrack = m_pTrackCollectionManager->getOrAddTrack(trackRef);
+
+    //Ensure is either channel1 or channel2
+    const QString& group = deck == 1 ? "[Channel1]" : deck == 2 ? "[Channel2]" : "";
+    if (!(QString::compare(group, ""))) return;
+
+    // Send off track for analysis
+    TrackId trackId = pTrack->getId();
+    //emit analyzeTracks({AnalyzerScheduledTrack(trackId)});
+    
+    //Call something that does rekordbox related analysis (with new phrase stuff).
+    int locCol = m_pRekordboxPlaylistModel->fieldIndex(ColumnCache::COLUMN_TRACKLOCATIONSTABLE_LOCATION);
+    int total = m_pRekordboxPlaylistModel->rowCount();
+    QModelIndex found;
+    for (int r = 0; r < total; ++r) {
+        QString p = m_pRekordboxPlaylistModel
+                            ->index(r, locCol)
+                            .data(Qt::DisplayRole)
+                            .toString();
+        if (p == location) {
+            found = m_pRekordboxPlaylistModel->index(r, locCol);
+            break;
+        }
+    }
+    emit generatePhraseData(found);
+
+    //Now load up track
+    if (pTrack) {
+#ifdef __STEM__
+    emit loadTrackToPlayer(pTrack, group, mixxx::StemChannelSelection(), play);
+#else
+    emit loadTrackToPlayer(pTrack, group, play);
+#endif
+    }
+
+    //Construct response (phrase information if obtainable)
+    //emit returnLoadedFileSegments(pTrack->getPhrases(), hdl);
+    //NOW this gets called from generatePhraseData() in RekordboxFeature.
+}
+
+//Get loaded track info
+void Library::getLoadedTrack(int deck, websocketpp::connection_hdl hdl) {
+    // Resolve deck -> group
+    QString group =
+            deck == 1 ? QStringLiteral("[Channel1]") : deck == 2 ? QStringLiteral("[Channel2]")
+                                                                 : QString();
+
+    if (group.isEmpty()) {
+        emit returnLoadedTrack(QString(), QString(), QString(), -1, hdl);
+        return;
+    }
+
+    // Get player from PlayerManager
+    BaseTrackPlayer* pPlayer = m_pPlayerManager->getPlayer(group);
+
+    if (!pPlayer) {
+        emit returnLoadedTrack(QString(), QString(), QString(), -1, hdl);
+        return;
+    }
+
+    TrackPointer pTrack = pPlayer->getLoadedTrack();
+
+    if (!pTrack) {
+        emit returnLoadedTrack(QString(), QString(), QString(), -1, hdl);
+        return;
+    }
+
+    // Extract metadata
+    QString location = pTrack->getLocation();
+    QString title = pTrack->getTitle();
+    QString artist = pTrack->getArtist();
+
+    TrackId id = pTrack->getId();
+    int trackId = id.isValid() ? id.toVariant().toInt() : -1;
+
+    emit returnLoadedTrack(location, title, artist, trackId, hdl);
 }
 
 #ifdef __STEM__

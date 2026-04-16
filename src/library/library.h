@@ -14,6 +14,8 @@
 #include "track/track_decl.h"
 #include "util/db/dbconnectionpool.h"
 #include "util/parented_ptr.h"
+#include <websocketpp/common/connection_hdl.hpp>
+#include "track/track.h"
 
 class AnalysisFeature;
 class BrowseFeature;
@@ -33,6 +35,7 @@ class WSearchLineEdit;
 class WLibrarySidebar;
 class WLibrary;
 class QAbstractItemModel;
+class RekordboxPlaylistModel;
 
 #ifdef __ENGINEPRIME__
 namespace mixxx {
@@ -118,6 +121,13 @@ class Library: public QObject {
     void slotShowTrackModel(QAbstractItemModel* model);
     void slotSwitchToView(const QString& view);
     void slotLoadTrack(TrackPointer pTrack);
+
+    //Misc
+    void returnLoadedFileSegmentsNoHdl(std::map<uint16_t, const char*> phrases);
+    void loadTrackByFileName(const QString& location, int deck, websocketpp::connection_hdl hdl, bool play = false);
+    void getLoadedTrack(int deck, websocketpp::connection_hdl hdl);
+    RekordboxPlaylistModel* getRekordboxPlaylistModel();
+
 #ifdef __STEM__
     void slotLoadTrackToPlayer(TrackPointer pTrack,
             const QString& group,
@@ -127,6 +137,7 @@ class Library: public QObject {
     void slotLoadTrackToPlayer(TrackPointer pTrack, const QString& group, bool play);
 #endif
     void slotLoadLocationToPlayer(const QString& location, const QString& group, bool play);
+
     void slotRefreshLibraryModels();
     void slotCreatePlaylist();
     void slotCreateCrate();
@@ -137,6 +148,11 @@ class Library: public QObject {
     void slotRestoreCurrentViewState() const;
 
   signals:
+    //Misc
+    void returnLoadedFileSegments(std::map<uint16_t, const char*> phrases, websocketpp::connection_hdl hdl);
+    void generatePhraseData(const QModelIndex& index);
+    void returnLoadedTrack(const QString& location, const QString& title, const QString& artist, int trackId, websocketpp::connection_hdl hdl);
+
     void showTrackModel(QAbstractItemModel* model, bool restoreState = true);
     void switchToView(const QString& view);
     void loadTrack(TrackPointer pTrack);
@@ -200,4 +216,9 @@ class Library: public QObject {
     int m_iTrackTableRowHeight;
     bool m_editMetadataSelectedClick;
     QScopedPointer<ControlObject> m_pKeyNotation;
+    RekordboxPlaylistModel* m_pRekordboxPlaylistModel;
+
+    //Misc
+    websocketpp::connection_hdl lastConHdl;
+    PlayerManager* m_pPlayerManager;
 };

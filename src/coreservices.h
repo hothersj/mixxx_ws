@@ -5,6 +5,11 @@
 #include "preferences/settingsmanager.h"
 #include "util/timer.h"
 
+//Misc
+#include "misc/remotewsinterface.h"
+#include "control/controlproxy.h"
+#include "track/track.h"
+
 class QApplication;
 class CmdlineArgs;
 class KeyboardEventFilter;
@@ -29,6 +34,9 @@ namespace mixxx {
 class ControlIndicatorTimer;
 class DbConnectionPool;
 class ScreensaverManager;
+
+//Misc
+class RemoteWebSocketInterface;
 
 class CoreServices : public QObject {
     Q_OBJECT
@@ -111,6 +119,9 @@ class CoreServices : public QObject {
   public slots:
     void slotOptionsKeyboard(bool toggle);
 
+    // Misc
+    void setDeckCue(int deck, int beatNum);
+
   private:
     bool initializeDatabase();
     void initializeKeyboard();
@@ -141,6 +152,9 @@ class CoreServices : public QObject {
     std::shared_ptr<DbConnectionPool> m_pDbConnectionPool;
     std::shared_ptr<TrackCollectionManager> m_pTrackCollectionManager;
     std::shared_ptr<Library> m_pLibrary;
+
+    //Misc
+    std::unique_ptr<RemoteWebSocketInterface> m_pRemoteWS;
 
     std::shared_ptr<KeyboardEventFilter> m_pKeyboardEventFilter;
     std::shared_ptr<ConfigObject<ConfigValueKbd>> m_pKbdConfig;

@@ -370,6 +370,31 @@ void CoreServices::initialize(QApplication* pApp) {
             m_pPlayerManager.get(),
             m_pRecordingManager.get());
 
+    ////Misc
+    //  Read settings or choose defaults:
+    int wsPort = 9001;
+    const QString wsToken = QStringLiteral("toxic");
+    // Instantiate:
+    m_pRemoteWS = std::make_unique<RemoteWebSocketInterface>(static_cast<quint16>(wsPort), this);
+    if (!wsToken.isEmpty()) {
+        m_pRemoteWS->setAuthToken(wsToken);
+    }
+    // Connect signals to Library slots:
+    connect(m_pRemoteWS.get(), &RemoteWebSocketInterface::loadFileRequested, m_pLibrary.get(), &Library::loadTrackByFileName, Qt::QueuedConnection);
+    connect(m_pLibrary.get(), &Library::returnLoadedFileSegments, m_pRemoteWS.get(), &RemoteWebSocketInterface::returnLoadedFileSegments, Qt::QueuedConnection);
+    connect(m_pRemoteWS.get(), &RemoteWebSocketInterface::infoMessage, [](const QString& msg) { qInfo().noquote() << "[RemoteWS]" << msg; });
+    connect(m_pRemoteWS.get(), &RemoteWebSocketInterface::errorMessage, [](const QString& msg) { qWarning().noquote() << "[RemoteWS]" << msg; });
+    connect(m_pRemoteWS.get(), &RemoteWebSocketInterface::setDeckCue, this, &CoreServices::setDeckCue, Qt::QueuedConnection);
+    connect(m_pRemoteWS.get(), &RemoteWebSocketInterface::getLoadedTrack, m_pLibrary.get(), &Library::getLoadedTrack, Qt::QueuedConnection);
+    connect(m_pLibrary.get(), &Library::returnLoadedTrack, m_pRemoteWS.get(), &RemoteWebSocketInterface::returnLoadedTrack, Qt::QueuedConnection);
+
+    // Start server:
+    if (!m_pRemoteWS->start()) {
+        qWarning() << "[RemoteWS] Failed to start WebSocket server on port" << wsPort;
+    } else {
+        qInfo() << "[RemoteWS] WebSocket server listening on port" << wsPort;
+    }
+
     OverviewCache* pOverviewCache = OverviewCache::createInstance(pConfig, m_pDbConnectionPool);
     connect(&(m_pTrackCollectionManager->internalCollection()->getTrackDAO()),
             &TrackDAO::waveformSummaryUpdated,
@@ -497,6 +522,19 @@ void CoreServices::initialize(QApplication* pApp) {
 
 #ifdef MIXXX_USE_QML
     initializeQMLSingletons();
+}
+
+void CoreServices::setDeckCue(int deck, int beatNum) {
+    if (deck != 1 && deck != 2)
+        return;
+    QString group = (deck == 1) ? "[Channel1]" : "[Channel2]";
+    TrackPointer track = m_pPlayerManager->getPlayer(group)->getLoadedTrack();
+
+    //double timeMs = duration * 1000;
+    //mixxx::audio::FramePos framePos =mixxx::audio::FramePos(qRound((timeMs / 1000.0) * track->getSampleRate().toDouble()));
+
+    mixxx::audio::FramePos framePos = track->getBeats()->findNthBeat(mixxx::audio::FramePos(0), beatNum);
+    track->setMainCuePosition(framePos);
 }
 
 void CoreServices::initializeQMLSingletons() {

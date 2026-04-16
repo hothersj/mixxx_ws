@@ -39,6 +39,38 @@
 class TrackCollectionManager;
 class BaseExternalPlaylistModel;
 
+// Define phrase labels
+inline std::map<int, const char*> STD_LABELS = {
+        {1, "Intro"},
+        {2, "Verse"},
+        {3, "Verse"},
+        {4, "Verse"},
+        {5, "Verse"},
+        {6, "Verse"},
+        {7, "Verse"},
+        {8, "Bridge"},
+        {9, "Chorus"},
+        {10, "Outro"}};
+inline std::map<int, const char*> OTHER_LABELS = {
+        {1, "Intro"},
+        {2, "Up"},
+        {3, "Down"},
+        {5, "Chorus"},
+        {6, "Outro"}};
+
+struct PHRASE_STRUCT {
+    uint16_t beatNum;
+    uint16_t kind;
+    uint8_t k1;
+    uint8_t k2;
+    uint8_t k3;
+};
+
+// Define mask.
+inline static const std::vector<uint8_t> XOR_MASK = {
+        0xCB, 0xE1, 0xEE, 0xFA, 0xE5, 0xEE, 0xAD, 0xEE, 0xE9, 0xD2, 0xE9, 0xEB, 0xE1, 0xE9, 0xF3, 0xE8, 0xE9, 0xF4, 0xE1};
+inline size_t maskLen = XOR_MASK.size();
+
 class RekordboxPlaylistModel : public BaseExternalPlaylistModel {
     Q_OBJECT
   public:
@@ -48,6 +80,13 @@ class RekordboxPlaylistModel : public BaseExternalPlaylistModel {
     TrackPointer getTrack(const QModelIndex& index) const override;
     bool isColumnHiddenByDefault(int column) override;
     bool isColumnInternal(int column) override;
+
+  signals:
+    // Misc
+    void returnLoadedFileSegmentsNoHdl(std::map<uint16_t, const char*> phrases);
+
+  public slots:
+    void generatePhraseData(const QModelIndex& index);
 
   protected:
     void initSortColumnMapping() override;

@@ -896,6 +896,8 @@ void readAnalyze(TrackPointer track,
                             section->body());
 
             QVector<mixxx::audio::FramePos> beats;
+            QMap<int, int> m_beatMsByBeatNumber;
+            int beatIdx = 1;
 
             for (const auto& beat : *beatGridTag->beats()) {
                 int time = static_cast<int>(beat->time()) - timingOffset;
@@ -903,6 +905,10 @@ void readAnalyze(TrackPointer track,
                 if (time < 1) {
                     time = 1;
                 }
+
+                //Misc
+                m_beatMsByBeatNumber[beatIdx++] = time;
+
                 beats << mixxx::audio::FramePos(sampleRateKhz * static_cast<double>(time));
             }
 
@@ -911,6 +917,7 @@ void readAnalyze(TrackPointer track,
                     beats,
                     mixxx::rekordboxconstants::beatsSubversion);
             track->trySetBeats(pBeats);
+            track->setBeatTimes(m_beatMsByBeatNumber);
         } break;
         case rekordbox_anlz_t::SECTION_TAGS_CUES: {
             if (ignoreCues) {
@@ -1042,6 +1049,76 @@ void readAnalyze(TrackPointer track,
                 } break;
                 }
             }
+        } break;
+        case rekordbox_anlz_t::SECTION_TAGS_SONG_STRUCTURE: { //SONG_STRUCTURE is in this level with fourcc
+            qDebug().noquote() << "We are in the song structure (PSSI) area!";
+
+            //Now get raw PSSI body to de-XOR and parse.
+            auto* pssi = static_cast<rekordbox_anlz_t::song_structure_tag_t*>(section->body());
+            uint16_t lenEntries = pssi->len_entries();     // number of phrases
+            std::string outerRaw = pssi->_raw_body();
+            std::vector<uint8_t> buf(outerRaw.begin(), outerRaw.end());
+            
+            size_t unmaskStart = 0; // turns out the raw 'body' actually starts with 'mood' in header, so will decipher from this point.
+            if (unmaskStart <= buf.size()) {
+                uint8_t lenE = static_cast<uint8_t>(lenEntries);
+                for (size_t i = unmaskStart; i < buf.size(); ++i) {
+                    uint8_t mask = (XOR_MASK[(i - unmaskStart) % maskLen] + lenE) & 0xFF;
+                    buf[i] ^= mask;
+                }
+            } else {
+                qWarning() << "PSSI raw_body too small; cannot unmask";
+            }
+
+            //Now obtain mood from first two bytes of remaining header.
+            uint16_t mood = (buf[0] << 8) | buf[1];
+
+            //Now moving through the rest of the buffer from +14 bytes onwards, can read sections of 24 bytes and retrieve the 'kind'
+            std::vector<PHRASE_STRUCT> phrases;
+            std::map<uint16_t, const char*> phraseLabelsMap;
+            size_t realBodyStart = 14;
+            for (size_t i = realBodyStart; i < buf.size(); i += 24) {
+                if (i + 19 > buf.size())
+                    break;
+
+                PHRASE_STRUCT newPhrase;
+
+                size_t beatOffset = i + 2;
+                uint16_t beat = (buf[beatOffset] << 8) | buf[beatOffset + 1];
+                newPhrase.beatNum = beat;
+
+                size_t kindOffset = i + 4;
+                uint16_t kind = (buf[kindOffset] << 8) | buf[kindOffset + 1];
+                newPhrase.kind = kind;
+
+                size_t k1Offset = i + 7;
+                uint8_t k1 = buf[k1Offset];
+                newPhrase.k1 = k1;
+
+                size_t k2Offset = i + 9;
+                uint8_t k2 = buf[k2Offset];
+                newPhrase.k2 = k2;
+
+                size_t k3Offset = i + 19;
+                uint8_t k3 = buf[k3Offset];
+                newPhrase.k3 = k3;
+
+                phrases.push_back(newPhrase);
+            }
+
+            if (mood == 3 || mood == 2) { //can use standard phrases
+                for (size_t i = 0; i < phrases.size(); i++) {
+                    phraseLabelsMap.insert({phrases[i].beatNum, STD_LABELS[phrases[i].kind]});
+                }
+            }
+            else if (mood == 1) {
+                for (size_t i = 0; i < phrases.size(); i++) {
+                    phraseLabelsMap.insert({phrases[i].beatNum, OTHER_LABELS[phrases[i].kind]});
+                }
+            }
+
+            //Now store phrase labels map in track so that can be retrieved when the track is loaded in via websocket for responding with phrases.
+            track->setPhrases(phraseLabelsMap);
         } break;
         default:
             break;
@@ -1192,6 +1269,11 @@ void RekordboxPlaylistModel::initSortColumnMapping() {
                 m_columnIndexBySortColumnId[static_cast<int>(sortColumn)],
                 sortColumn);
     }
+}
+
+void RekordboxPlaylistModel::generatePhraseData(const QModelIndex& index) {
+    TrackPointer track = getTrack(index);
+    emit returnLoadedFileSegmentsNoHdl(track->getPhrases());
 }
 
 TrackPointer RekordboxPlaylistModel::getTrack(const QModelIndex& index) const {

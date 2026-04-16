@@ -22,6 +22,7 @@
 #include "util/fileaccess.h"
 #include "util/performancetimer.h"
 #include "waveform/waveform.h"
+#include <websocketpp/common/connection_hdl.hpp>
 
 class Track : public QObject {
     Q_OBJECT
@@ -52,6 +53,10 @@ class Track : public QObject {
     static TrackPointer newDummy(
             const QString& filePath,
             TrackId trackId);
+
+    //Misc
+    void setBeatTimes(QMap<int, int>& beatMs);
+    QMap<int, int>& getBeatTimes();
 
     Q_PROPERTY(QString artist READ getArtist WRITE setArtist NOTIFY artistChanged)
     Q_PROPERTY(QString title READ getTitle WRITE setTitle NOTIFY titleChanged)
@@ -371,6 +376,10 @@ class Track : public QObject {
     // Get the track's Beats list
     mixxx::BeatsPointer getBeats() const;
 
+    //NEW track phrases
+    std::map<uint16_t, const char*> getPhrases();
+    void setPhrases(std::map<uint16_t, const char*> newPhrases);
+
     // Set the track's Beats if not locked
     bool trySetBeats(mixxx::BeatsPointer pBeats);
     bool trySetAndLockBeats(mixxx::BeatsPointer pBeats);
@@ -616,6 +625,12 @@ class Track : public QObject {
     QStack<mixxx::BeatsPointer> m_pBeatsUndoStack;
     bool m_undoingBeatsChange;
     PerformanceTimer m_beatChangeTimer;
+
+    // Misc
+    QMap<int, int> m_beatMsByBeatNumber; // for beatNum -> msOffset
+
+    // NEW track phrases
+    std::map<uint16_t, const char*> phrases; //for each track, have starting beat num and related phrase
 
     // Visual waveform data
     ConstWaveformPointer m_waveform;

@@ -496,6 +496,26 @@ mixxx::BeatsPointer Track::getBeats() const {
     return m_pBeats;
 }
 
+//NEW track phrases
+std::map<uint16_t, const char*> Track::getPhrases() {
+    const auto locked = lockMutex(&m_qMutex);
+    return phrases;
+}
+
+void Track::setPhrases(std::map<uint16_t, const char*> newPhrases) {
+    const auto locked = lockMutex(&m_qMutex);
+    phrases = newPhrases;
+}
+
+//New beats to times (ms)
+void Track::setBeatTimes(QMap<int, int>& beatMs) {
+    m_beatMsByBeatNumber = beatMs;
+}
+
+QMap<int, int>& Track::getBeatTimes() {
+    return m_beatMsByBeatNumber;
+}
+
 void Track::undoBeatsChange() {
     if (!canUndoBeatsChange()) {
         return;
