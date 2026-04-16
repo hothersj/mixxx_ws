@@ -1327,6 +1327,7 @@ add_library(
   src/mixer/samplerbank.cpp
   src/mixxxapplication.cpp
   src/mixxxmainwindow.cpp
+  src/misc/remotewsinterface.cpp
   src/musicbrainz/chromaprinter.cpp
   src/musicbrainz/crc.cpp
   src/musicbrainz/gzip.cpp
@@ -1635,6 +1636,11 @@ add_library(
   src/widget/wwidget.cpp
   src/widget/wwidgetgroup.cpp
   src/widget/wwidgetstack.cpp
+)
+set_source_files_properties(
+  src/misc/remotewsinterface.cpp
+  PROPERTIES
+    COMPILE_OPTIONS "-std=gnu++17"
 )
 set(MIXXX_COMMON_PRECOMPILED_HEADER src/util/assert.h)
 set(
